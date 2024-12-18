@@ -2,7 +2,6 @@ import discord
 import os
 import functionality as fn
 from discord.ext import commands
-from tabulate import tabulate
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,15 +13,23 @@ intents.typing = False
 intents.presences = False
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+draft_channel: discord.TextChannel = None
+teams_channel: discord.TextChannel = None
+
 @bot.event
 async def on_ready():
     # Set the bot's activity to "Playing a game"
     activity = discord.Activity(type=discord.ActivityType.listening, name="!PlsHelp")
     await bot.change_presence(activity=activity)
 
+    global draft_channel, teams_channel
+    
+    draft_channel = bot.get_channel(int(os.getenv("DRAFT_CHANNEL_ID")))
+    teams_channel = bot.get_channel(int(os.getenv("TEAMS_CHANNEL_ID")))
+
     print(f"{bot.user} has connected to Discord!")
 
-@bot.command(name="StartDraft")
+@bot.command(name="SD")
 async def start_draft(ctx: commands.Context):
     await ctx.send("# Welcome to the FIFA Draft! How many players are playing?")
 
@@ -40,21 +47,21 @@ async def start_draft(ctx: commands.Context):
     fn.init_draft(player_names)
 
     # Run 12 position-based rounds
-    await ctx.send("# Starting position-based draft...")
+    await draft_channel.send("# Starting position-based draft...")
     for position in fn.get_random_positions():
         await fn.run_draft_round(ctx, bot, position)
 
     free_pick_count = int(fn.draft_state["free_picks"])
     # Run 10 free pick rounds
-    await ctx.send(f"# Free Pick Rounds: {free_pick_count} rounds to pick any players")
+    await draft_channel.send(f"# Free Pick Rounds: {free_pick_count} rounds to pick any players")
     for round_num in range(1, free_pick_count + 1):
         await fn.run_free_pick_round(ctx, bot, round_num)
 
-    await ctx.send("# Draft Complete! Here are the teams.")
+    await draft_channel.send("# Draft Complete! Here are the teams.")
     for player_name in player_names:
-        await show_small_team(ctx, player_name)
+        await show_small_team(ctx, player_name, True)
 
-@bot.command(name="ShowBigTeam")
+@bot.command(name="SBT")
 async def show_big_team(ctx: commands.Context, player_name: str):
     """Show the team of a specific player."""
     team = fn.get_player_team(player_name)
@@ -81,13 +88,18 @@ async def show_big_team(ctx: commands.Context, player_name: str):
             )
 
         # Send the embed
-        await ctx.send(embed=embed)
+        await teams_channel.send(embed=embed)
     else:
-        await ctx.send(f"No team found for **{player_name}**.")
+        await teams_channel.send(f"No team found for **{player_name}**.")
 
-@bot.command(name="ShowSmallTeam")
-async def show_small_team(ctx: commands.Context, player_name: str):
+@bot.command(name="SST")
+async def show_small_team(ctx: commands.Context, player_name: str, auto: bool = False):
     """Show the team of a specific player."""
+    display_name = player_name
+    if(not auto):
+        mentioned_user = ctx.message.mentions[0]
+        player_name = mentioned_user.name
+        display_name = mentioned_user.display_name
     team = fn.get_player_team(player_name)
     position_order = [
         'GK', 'LB', 'CB', 'RB', 'CDM', 'LM', 'CM', 'RM', 'CAM', 'LW', 'ST', 'RW'
@@ -96,7 +108,7 @@ async def show_small_team(ctx: commands.Context, player_name: str):
         sorted_team = sorted(team, key=lambda p: position_order.index(p['Position']) if p['Position'] in position_order else len(position_order))
         # Create an embed
         embed = discord.Embed(
-            title=f"{player_name}'s Team",
+            title=f"{display_name}'s Team",
             description=f"Here are the players ({len(sorted_team)}) drafted:\n-------------------",
             color=discord.Color.blue()
         )
@@ -110,15 +122,15 @@ async def show_small_team(ctx: commands.Context, player_name: str):
             )
 
         # Send the embed
-        await ctx.send(embed=embed)
+        await teams_channel.send(embed=embed)
     else:
-        await ctx.send(f"No team found for **{player_name}**.")
+        await teams_channel.send(f"No team found for **{player_name}**.")
 
 
 @bot.command(name="PlsHelp")
 async def help_text(ctx: commands.Context):
     """Sends the various commands to chat."""
-    await ctx.send(f"```!StartDraft - Starts the drafting mode\n!ShowBigTeam <player_name> - Expanded view on player's squad\n!ShowSmallTeam <player_name> - Brief view on player's squad```")
+    await ctx.send(f"```!SD - Starts the drafting mode\n!SBT <player_name> - Expanded view on player's squad\n!SST <player_name> - Brief view on player's squad```")
 
 # Run the bot
 bot.run(TOKEN) 

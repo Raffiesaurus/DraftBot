@@ -4,18 +4,27 @@ import asyncio
 import pandas as pd
 import numpy as np
 import discord
+import os
 from discord.ext import commands
+from dotenv import load_dotenv
 
 PLAYER_DATABASE = "data/players.csv"
 DATA  = pd.read_csv(PLAYER_DATABASE)
 FILTERED_DATA = DATA[(DATA['OVR'] >= 81) & (DATA['OVR'] <= 89)]  
 
+load_dotenv()
+
 player_objects = {}
 picked_players = set()
+
+draft_channel: discord.TextChannel = None
+teams_channel: discord.TextChannel = None
+
 # Draft State
 draft_state = {
     "players": {},
     "positions": ["LW", "ST", "RW", "LM", "RM", "CAM", "CDM", "CM", "LB", "RB", "CB", "CB", "GK"],
+    #"positions": ["LW"],
     "free_picks": 11
 }
 
@@ -85,6 +94,10 @@ def random_player_selection(player_pool, num_choices=5):
 
 async def get_num_players(ctx: commands.Context, bot: commands.Bot):
     """Prompt for the number of players."""
+    global draft_channel, teams_channel
+    draft_channel = bot.get_channel(int(os.getenv("DRAFT_CHANNEL_ID")))
+    teams_channel = bot.get_channel(int(os.getenv("TEAMS_CHANNEL_ID")))
+
     def check(m: discord.Message):
         return m.author == ctx.author and m.content.isdigit()
 
@@ -105,15 +118,16 @@ async def get_player_names(ctx: commands.Context, bot: commands.Bot, num_players
             if(msg.author == bot.user):
                 continue
             else:
-                player_objects[msg.author] = msg.author.display_name  # Store the user object
-                player_names.append(msg.author.display_name)
+                player_objects[msg.author] = msg.author.name  # Store the user object
+                player_names.append(msg.author.name)
         except asyncio.TimeoutError:
             return None
     return player_names
 
 async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: int):
     """Run a single position-based draft round."""
-    await ctx.send(f"## Drafting for {position} position")
+    global draft_channel, teams_channel
+    await draft_channel.send(f"## Drafting for {position} position")
     random.shuffle(draft_state["players"])
     for player_name in draft_state["players"]:
         # Get 5 random players for this position, avoiding duplicates
@@ -121,7 +135,7 @@ async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: in
 
         # If no players are available, end the draft round for this player
         if not options:
-            await ctx.send(f"No more players available for the {position} position.")
+            await draft_channel.send(f"No more players available for the {position} position.")
             continue
 
         embed = discord.Embed(
@@ -142,7 +156,7 @@ async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: in
             )
 
         # Send the embed
-        message = await ctx.send(embed=embed)
+        message = await draft_channel.send(embed=embed)
 
         emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
         for idx, emoji in enumerate(emojis[:len(options)]):
@@ -151,7 +165,7 @@ async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: in
 
         # Check function to validate the player's response
         def check(reaction: discord.Reaction, user: discord.User):
-            return user.display_name == player_name and str(reaction.emoji) in emojis[:len(options)]
+            return user.name == player_name and str(reaction.emoji) in emojis[:len(options)]
 
         try:
             # Wait for the player's choice
@@ -162,14 +176,16 @@ async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: in
             picked_players.add(chosen_player['Name'])
             save_to_json()
             await message.delete()
-            await ctx.send(f"```{player_name} picked {chosen_player['Name']} ({chosen_player['Position']}) - {chosen_player['OVR']}```")
+            await draft_channel.send(f"```{player_name} picked {chosen_player['Name']} ({chosen_player['Position']}) - {chosen_player['OVR']}```")
+            
 
         except (asyncio.TimeoutError, ValueError, IndexError):
-            await ctx.send(f"{player_name} missed their pick!")
+            await draft_channel.send(f"{player_name} missed their pick!")
 
 async def run_free_pick_round(ctx: commands.Context, bot: commands.Bot, round_num: int):
     """Run a single free pick round."""
-    await ctx.send(f"## Free Pick Round {round_num}")
+    global draft_channel, teams_channel
+    await draft_channel.send(f"## Free Pick Round {round_num}")
     random.shuffle(draft_state["players"])
     for player_name in draft_state["players"]:
         # Get 5 random players, avoiding duplicates
@@ -177,7 +193,7 @@ async def run_free_pick_round(ctx: commands.Context, bot: commands.Bot, round_nu
 
         # If no players are available, end the free pick round for this player
         if not options:
-            await ctx.send(f"No more players available for selection.")
+            await draft_channel.send(f"No more players available for selection.")
             continue
 
         embed = discord.Embed(
@@ -198,7 +214,7 @@ async def run_free_pick_round(ctx: commands.Context, bot: commands.Bot, round_nu
             )
 
         # Send the embed
-        message = await ctx.send(embed=embed)
+        message = await draft_channel.send(embed=embed)
 
         emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣']
         for idx, emoji in enumerate(emojis[:len(options)]):
@@ -207,7 +223,7 @@ async def run_free_pick_round(ctx: commands.Context, bot: commands.Bot, round_nu
 
         # Check function to validate the player's response
         def check(reaction: discord.Reaction, user: discord.User):
-            return user.display_name == player_name and str(reaction.emoji) in emojis[:len(options)]
+            return user.name == player_name and str(reaction.emoji) in emojis[:len(options)]
 
         try:
             # Wait for the player's choice
@@ -218,10 +234,10 @@ async def run_free_pick_round(ctx: commands.Context, bot: commands.Bot, round_nu
             picked_players.add(chosen_player['Name'])
             save_to_json()
             await message.delete()
-            await ctx.send(f"```{player_name} picked {chosen_player['Name']} ({chosen_player['Position']}) - {chosen_player['OVR']}```")
+            await draft_channel.send(f"```{player_name} picked {chosen_player['Name']} ({chosen_player['Position']}) - {chosen_player['OVR']}```")
 
         except (asyncio.TimeoutError, ValueError, IndexError):
-            await ctx.send(f"{player_name} missed their pick!")
+            await draft_channel.send(f"{player_name} missed their pick!")
 
 def get_player_team(player_name: str):
     """Retrieve a player's team."""
