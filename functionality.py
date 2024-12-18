@@ -24,11 +24,21 @@ teams_channel: discord.TextChannel = None
 draft_state = {
     "players": {},
     "positions": ["LW", "ST", "RW", "LM", "RM", "CAM", "CDM", "CM", "LB", "RB", "CB", "CB", "GK"],
-    #"positions": ["LW"],
+    # "positions": ["LW"],
     "free_picks": 11
 }
 
 SAVE_FILE = "teams.json"
+
+# with open(SAVE_FILE, "r") as file:
+#     draft_state["players"] = json.load(file)
+#     keys = list(draft_state["players"].keys())
+#     print(keys)
+#     random.shuffle(keys)
+#     randomized_dict = {key: draft_state["players"][key] for key in keys}
+#     print(draft_state['players'])
+#     print(randomized_dict)
+#     draft_state['players'] = randomized_dict
 
 # Helper Functions
 def init_draft(player_names):
@@ -126,9 +136,14 @@ async def get_player_names(ctx: commands.Context, bot: commands.Bot, num_players
 
 async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: int):
     """Run a single position-based draft round."""
-    global draft_channel, teams_channel
+    global draft_channel, teams_channel, draft_state
     await draft_channel.send(f"## Drafting for {position} position")
-    random.shuffle(draft_state["players"])
+    
+    keys = list(draft_state["players"].keys())
+    random.shuffle(keys)
+    randomized_dict = {key: draft_state["players"][key] for key in keys}
+    draft_state['players'] = randomized_dict
+    
     for player_name in draft_state["players"]:
         # Get 5 random players for this position, avoiding duplicates
         options = get_random_players(position)
@@ -184,9 +199,14 @@ async def run_draft_round(ctx: commands.Context, bot: commands.Bot, position: in
 
 async def run_free_pick_round(ctx: commands.Context, bot: commands.Bot, round_num: int):
     """Run a single free pick round."""
-    global draft_channel, teams_channel
+    global draft_channel, teams_channel, draft_state
     await draft_channel.send(f"## Free Pick Round {round_num}")
-    random.shuffle(draft_state["players"])
+    
+    keys = list(draft_state["players"].keys())
+    random.shuffle(keys)
+    randomized_dict = {key: draft_state["players"][key] for key in keys}
+    draft_state['players'] = randomized_dict
+    
     for player_name in draft_state["players"]:
         # Get 5 random players, avoiding duplicates
         options = get_random_players()
