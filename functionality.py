@@ -2,7 +2,6 @@ import random
 import json
 import asyncio
 import pandas as pd
-import numpy as np
 import discord
 import os
 from discord.ext import commands
